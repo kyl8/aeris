@@ -1,0 +1,81 @@
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*.swn
+*.tmp
+*.bak
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.nox/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+site/
+pip-wheel-metadata/
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Environment files ---
+.env
+.env.*
+!.env.example
+*.local
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Frontend / Node ---
+node_modules/
+web/node_modules/
+dist-ssr/
+.vite/
+web/.vite/
+web/dist/
+vite.svg
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- ML / model artifacts ---
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.joblib
+*.pkl
+*.pickle
+*.h5
+*.keras
+runs/
+wandb/
+mlruns/
+checkpoints/
+api/weights/
