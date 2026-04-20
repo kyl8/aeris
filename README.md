@@ -1,12 +1,10 @@
 # Aeris
 
-Climatology analysis and forecasting API.
+Análise e previsão atmosférica em tempo real via modelo de cnn.
 
 ## Requisitos
-```text
-[uv](https://docs.astral.sh/uv/)
-[bun](https://bun.com/) or [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-```
+- [uv](https://docs.astral.sh/uv/)
+- [bun](https://bun.com/) ou [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 ## Estrutura
 
