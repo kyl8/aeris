@@ -1,5 +1,97 @@
 const ptBR = {
   translation: {
+    dashboard: {
+      overview: {
+        title: 'Visão Geral',
+        description: 'Monitore o desempenho e a atividade do motor de inferência Aeris Climate Stack em tempo real.',
+        stats: {
+          totalPredictions: 'Total Predições',
+          totalPredictionsHint: 'Na API',
+          confidence: 'Confiança',
+          confidenceHint: 'Média',
+          topClass: 'Top Classe',
+          topClassHint: 'Mais frequente',
+          lastInference: 'Última Inferência',
+          lastInferenceNone: 'Nenhuma',
+        }
+      },
+      realtime: {
+        title: 'Inferência em tempo real',
+        description: 'Conecte sua webcam para fazer detecção e classificação ao vivo.',
+        active: 'Câmera ativa',
+        offline: 'Câmera offline',
+        start: 'Iniciar câmera',
+        stop: 'Parar câmera',
+        standby: 'Câmera em espera',
+        demoLabel: 'Pessoa 0.89',
+        error: {
+          cameraAccess: 'Não foi possível acessar a câmera. Verifique as permissões.',
+        },
+      },
+      distribution: {
+        title: 'Distribuição de Classes',
+        description: 'Detalhamento dos fenômenos climáticos reconhecidos em todas as imagens processadas.',
+        emptyTitle: 'Sem dados de distribuição',
+        emptyDescription: 'Processe uma imagem para gerar análises de distribuição.',
+        total: 'Total'
+      },
+      activity: {
+        title: 'Atividade de Inferência',
+        description: 'Volume de predições processadas ao longo do tempo.',
+        emptyTitle: 'Sem dados de linha do tempo',
+        emptyDescription: 'A atividade aparecerá aqui assim que as predições forem feitas.',
+        predictions: 'predições'
+      },
+      history: {
+        title: 'Histórico de Predições',
+        allClasses: 'Todas as Classes',
+        table: {
+          class: 'Classe',
+          confidence: 'Confiança',
+          model: 'Modelo',
+          timestamp: 'Data/Hora'
+        },
+        error: 'Erro ao carregar histórico',
+        emptyTitle: 'Nenhum histórico encontrado',
+        emptyDescription: 'Ajuste seus filtros ou envie uma nova imagem para inferência.'
+      },
+      inference: {
+        title: 'Executar Inferência',
+        description: 'Envie uma imagem ou forneça uma string Base64 para analisar fenômenos climáticos.',
+        tabs: {
+          upload: 'Upload',
+          base64: 'Base64'
+        },
+        input: {
+          title: 'Imagem de Entrada',
+          clickUpload: 'Clique para enviar',
+          dragDrop: 'ou arraste e solte',
+          supportedFiles: 'PNG, JPG ou WebP',
+          pasteBase64: 'Cole os dados da imagem em base64 aqui...',
+          processing: 'Processando...',
+          submit: 'Executar Inferência',
+          clear: 'Limpar'
+        },
+        results: {
+          title: 'Resultados',
+          detectedClass: 'Classe Detectada',
+          modelInfo: 'Informações do Modelo',
+          latency: 'ms latência',
+          waitingTitle: 'Aguardando resultados...',
+          waitingDescription: 'Envie a imagem para ver os dados da predição.'
+        }
+      },
+      docs: {
+        title: 'Documentação da API',
+        description: 'Explore o esquema da API REST do Aeris nativamente usando Swagger ou ReDoc.',
+      },
+      tabs: {
+        overview: 'Visão Geral',
+        inference: 'Inferência',
+        realtime: 'Tempo real',
+        docs: 'Documentação'
+      }
+    },
     header: {
       brand: 'Aeris',
       search: 'Buscar na documentação',
@@ -104,6 +196,24 @@ const ptBR = {
       frontendText: 'UI, hooks e conteúdo estão isolados em web/src/ para o layout continuar legível.',
       weightsTitle: 'Artefatos do modelo',
       weightsText: 'Quando houver um modelo treinado, coloque os pesos em api/weights/.',
+    },
+    classes: {
+      cloudyOvercast: 'Nublado',
+      foggyHazy: 'Neblina',
+      rainStorm: 'Chuva ou tempestade',
+      snowFrosty: 'Neve ou geada',
+      sunClear: 'Sol ou céu limpo',
+      dew: 'Orvalho',
+      fogsmog: 'Neblina e fumaça',
+      frost: 'Geada',
+      glaze: 'Camada de gelo',
+      hail: 'Granizo',
+      lightning: 'Raio',
+      rain: 'Chuva',
+      rainbow: 'Arco-íris',
+      rime: 'Geada branca',
+      sandstorm: 'Tempestade de areia',
+      snow: 'Neve',
     },
     result: {
       title: 'Resultado',

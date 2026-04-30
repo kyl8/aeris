@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react'
+
 import { fetchHealth } from '../lib/api'
 
 const loadingHealth = {
   status: 'checando...',
-  service: 'Aeris API',
-  version: '0.1.0',
 }
 
 const fallbackHealth = {
   status: 'offline',
-  service: 'Aeris API',
-  version: '0.1.0',
 }
 
 export function useHealth() {
@@ -47,5 +44,6 @@ export function useHealth() {
   return {
     health,
     isLoading,
+    isHealthy: !isLoading && health.status === 'online',
   }
 }

@@ -79,3 +79,7 @@ wandb/
 mlruns/
 checkpoints/
 api/weights/
+
+datasets/
+
+.uv-cache/

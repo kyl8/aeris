@@ -1,5 +1,97 @@
 const enUS = {
   translation: {
+    dashboard: {
+      overview: {
+        title: 'Overview',
+        description: 'Monitor the performance and activity of the Aeris Climate Stack inference engine in real-time.',
+        stats: {
+          totalPredictions: 'Total Predictions',
+          totalPredictionsHint: 'In API',
+          confidence: 'Confidence',
+          confidenceHint: 'Average',
+          topClass: 'Top Class',
+          topClassHint: 'Most frequent',
+          lastInference: 'Last Inference',
+          lastInferenceNone: 'None',
+        }
+      },
+      realtime: {
+        title: 'Realtime Inference',
+        description: 'Connect your webcam to run live detection and classification.',
+        active: 'Camera Active',
+        offline: 'Camera Offline',
+        start: 'Start Camera',
+        stop: 'Stop Camera',
+        standby: 'Camera is on standby',
+        demoLabel: 'Person 0.89',
+        error: {
+          cameraAccess: 'Failed to access camera. Please ensure permissions are granted.',
+        },
+      },
+      distribution: {
+        title: 'Class Distribution',
+        description: 'Breakdown of recognized climate phenomena across all processed images.',
+        emptyTitle: 'No distribution data',
+        emptyDescription: 'Process an image to generate distribution analytics.',
+        total: 'Total'
+      },
+      activity: {
+        title: 'Inference Activity',
+        description: 'Volume of predictions processed over time.',
+        emptyTitle: 'No timeline data',
+        emptyDescription: 'Activity will appear here once predictions are made.',
+        predictions: 'predictions'
+      },
+      history: {
+        title: 'Prediction History',
+        allClasses: 'All Classes',
+        table: {
+          class: 'Class',
+          confidence: 'Confidence',
+          model: 'Model',
+          timestamp: 'Timestamp'
+        },
+        error: 'Error Loading History',
+        emptyTitle: 'No history found',
+        emptyDescription: 'Adjust your filters or submit a new image for inference.'
+      },
+      inference: {
+        title: 'Run Inference',
+        description: 'Upload an image or provide a Base64 string to analyze climate phenomena using our models.',
+        tabs: {
+          upload: 'Upload',
+          base64: 'Base64'
+        },
+        input: {
+          title: 'Input Image',
+          clickUpload: 'Click to upload',
+          dragDrop: 'or drag and drop',
+          supportedFiles: 'PNG, JPG or WebP',
+          pasteBase64: 'Paste base64 image data here...',
+          processing: 'Processing...',
+          submit: 'Run Inference',
+          clear: 'Clear'
+        },
+        results: {
+          title: 'Results',
+          detectedClass: 'Detected Class',
+          modelInfo: 'Model Info',
+          latency: 'ms latency',
+          waitingTitle: 'Waiting for results...',
+          waitingDescription: 'Submit the image to see prediction data.'
+        }
+      },
+      docs: {
+        title: 'API Documentation',
+        description: 'Explore the Aeris REST API schema natively using Swagger or ReDoc.',
+      },
+      tabs: {
+        overview: 'Overview',
+        inference: 'Inference',
+        realtime: 'Realtime',
+        docs: 'Documentation'
+      }
+    },
     header: {
       brand: 'Aeris',
       search: 'Search docs',
@@ -104,6 +196,24 @@ const enUS = {
       frontendText: 'UI, hooks and content stay isolated in web/src/ so the layout stays readable.',
       weightsTitle: 'Model artifacts',
       weightsText: 'When a trained model exists, place the weights in api/weights/.',
+    },
+    classes: {
+      cloudyOvercast: 'Cloudy or overcast',
+      foggyHazy: 'Foggy or hazy',
+      rainStorm: 'Rain or storm',
+      snowFrosty: 'Snow or frosty',
+      sunClear: 'Sun or clear',
+      dew: 'Dew',
+      fogsmog: 'Fog/Smog',
+      frost: 'Frost',
+      glaze: 'Glaze',
+      hail: 'Hail',
+      lightning: 'Lightning',
+      rain: 'Rain',
+      rainbow: 'Rainbow',
+      rime: 'Rime',
+      sandstorm: 'Sandstorm',
+      snow: 'Snow',
     },
     result: {
       title: 'Result',

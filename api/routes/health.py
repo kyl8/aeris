@@ -1,23 +1,11 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
 
-from ..core.config import APP_NAME, APP_VERSION
+from ..schemas.prediction import HealthResponse
 
 router = APIRouter(tags=["health"])
 
 
-class HealthResponse(BaseModel):
-    status: str
-    service: str
-    version: str
-    docs: str
-
-
-@router.get("/health", response_model=HealthResponse, summary="Verifica se a API está ativa")
+@router.get("/api/v1/health", response_model=HealthResponse, summary="Verifica se a API está ativa")
+@router.get("/health", response_model=HealthResponse, include_in_schema=False)
 def health() -> HealthResponse:
-    return HealthResponse(
-        status="ok",
-        service=APP_NAME,
-        version=APP_VERSION,
-        docs="/docs",
-    )
+    return HealthResponse(status="online")
