@@ -1,31 +1,8 @@
 from base64 import b64decode, b64encode
 from binascii import Error as Base64Error
-from collections import Counter
 from html import escape
 import hashlib
-from math import isfinite, sqrt
-
-
-def coerce_features(features: list[float]) -> list[float]:
-    cleaned_features: list[float] = []
-
-    for raw_value in features:
-        value = float(raw_value)
-        if isfinite(value):
-            cleaned_features.append(value)
-
-    if not cleaned_features:
-        raise ValueError("Pelo menos um valor numérico finito é necessário.")
-
-    return cleaned_features
-
-
-def normalize_features(features: list[float]) -> list[float]:
-    scale = max(abs(value) for value in features)
-    if scale == 0:
-        return [0.0 for _ in features]
-
-    return [round(value / scale, 6) for value in features]
+from math import sqrt
 
 
 def decode_base64_image(raw_value: str) -> bytes:
@@ -184,27 +161,3 @@ def build_heatmap_base64(image_bytes: bytes, image_size: int = 320) -> str:
 '''
 
     return b64encode(svg.encode("utf-8")).decode("ascii")
-
-
-import io
-try:
-    from PIL import Image
-    import torch
-    from torchvision import transforms
-except ImportError:
-    Image = None
-    torch = None
-    transforms = None
-
-def transform_image_for_pytorch(image_bytes: bytes) -> "torch.Tensor":
-    if Image is None or transforms is None:
-        raise RuntimeError("Pillow and torchvision are required for PyTorch inference.")
-    
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    return transform(image).unsqueeze(0) 

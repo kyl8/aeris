@@ -83,3 +83,9 @@ api/weights/
 datasets/
 
 .uv-cache/
+.uv-tmp/
+outputs
+DESIGN.md
+PRODUCT.MD
+1.csv
+climate_multimodal_dataset.csv

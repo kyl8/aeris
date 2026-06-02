@@ -21,6 +21,7 @@ TRAIN_DIR = CURRENT_DIR / "datasets" / "training"
 VAL_DIR = CURRENT_DIR / "datasets" / "validating"
 MODEL_DIR = CURRENT_DIR / "weights" / "aeris-weather-siglip2"
 CLASSES_SAVE_PATH = CURRENT_DIR / "weights" / "aeris-classes.json"
+TRAINING_METADATA_PATH = MODEL_DIR / "aeris-training-metadata.json"
 BASE_MODEL_ID = "prithivMLmods/Weather-Image-Classification"
 TARGET_CLASSES = [
     "cloudy/overcast",
@@ -47,7 +48,7 @@ SOURCE_TO_TARGET_CLASS = {
 }
 
 BATCH_SIZE = int(os.getenv("AERIS_BATCH_SIZE", "8"))
-NUM_EPOCHS = 12
+NUM_EPOCHS = int(os.getenv("AERIS_NUM_EPOCHS", "6"))
 LEARNING_RATE = 2e-5
 WEIGHT_DECAY = 0.01
 VALIDATION_RATIO = 0.2
@@ -55,7 +56,9 @@ SEED = 42
 IMAGE_SIZE = 224
 NUM_WORKERS = 0 if os.name == "nt" else 2
 DEVICE_PREFERENCE = os.getenv("AERIS_DEVICE", "auto").strip().lower()
-FREEZE_BACKBONE = os.getenv("AERIS_FREEZE_BACKBONE", "0").strip().lower() in {"1", "true", "yes", "sim"}
+FREEZE_BACKBONE = os.getenv("AERIS_FREEZE_BACKBONE", "1").strip().lower() in {"1", "true", "yes", "sim"}
+USE_WEIGHTED_SAMPLER = os.getenv("AERIS_USE_WEIGHTED_SAMPLER", "1").strip().lower() in {"1", "true", "yes", "sim"}
+USE_CLASS_WEIGHTS = os.getenv("AERIS_USE_CLASS_WEIGHTS", "0").strip().lower() in {"1", "true", "yes", "sim"}
 LOG_EVERY_N_BATCHES = int(os.getenv("AERIS_LOG_EVERY_N_BATCHES", "25"))
 
 
@@ -189,6 +192,13 @@ def build_class_weights(samples: list[tuple[str, int]], num_classes: int) -> tup
     return torch.tensor(class_weights, dtype=torch.float32), sample_weights
 
 
+def print_class_distribution(samples: list[tuple[str, int]], classes: list[str], title: str) -> None:
+    class_counts = Counter(label for _, label in samples)
+    print(title)
+    for index, class_name in enumerate(classes):
+        print(f"  - {class_name}: {class_counts.get(index, 0)}")
+
+
 def is_directml_device(device: object) -> bool:
     device_type = getattr(device, "type", None)
     if isinstance(device_type, str):
@@ -305,6 +315,13 @@ def freeze_backbone(model: SiglipForImageClassification) -> None:
     model.vision_model.eval()
 
 
+def clone_state_dict_to_cpu(model: SiglipForImageClassification) -> dict[str, torch.Tensor]:
+    return {
+        name: tensor.detach().cpu().clone()
+        for name, tensor in model.state_dict().items()
+    }
+
+
 def save_artifacts(model: SiglipForImageClassification, processor: AutoImageProcessor, classes: list[str]) -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     model.config.id2label = {index: label for index, label in enumerate(classes)}
@@ -319,6 +336,16 @@ def save_artifacts(model: SiglipForImageClassification, processor: AutoImageProc
 
     with open(CLASSES_SAVE_PATH, "w", encoding="utf-8") as file_handle:
         json.dump(classes, file_handle, ensure_ascii=False, indent=2)
+
+    training_metadata = {
+        "base_model_id": BASE_MODEL_ID,
+        "classes": classes,
+        "fine_tune_mode": "classifier_head" if FREEZE_BACKBONE else "full_model",
+        "image_size": IMAGE_SIZE,
+        "use_fast_processor": True,
+    }
+    with open(TRAINING_METADATA_PATH, "w", encoding="utf-8") as file_handle:
+        json.dump(training_metadata, file_handle, ensure_ascii=False, indent=2)
 
 
 def main() -> None:
@@ -359,6 +386,8 @@ def main() -> None:
         print(f"  - {source_class} -> {SOURCE_TO_TARGET_CLASS[source_class]}")
     print(f"Imagens de treino: {len(train_samples)}")
     print(f"Imagens de validação: {len(val_samples)}")
+    print_class_distribution(train_samples, classes, "Distribuição do treino:")
+    print_class_distribution(val_samples, classes, "Distribuição da validação:")
 
     print("\nCarregando processor e modelo base do Hugging Face...")
     try:
@@ -388,19 +417,28 @@ def main() -> None:
     val_dataset = WeatherImageDataset(val_samples, processor)
 
     class_weights, sample_weights = build_class_weights(train_samples, num_classes)
-    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+    sampler = (
+        WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+        if USE_WEIGHTED_SAMPLER
+        else None
+    )
 
     device = select_device(DEVICE_PREFERENCE)
     print(f"Usando processamento via: {device}")
     if is_directml_device(device):
         print("[AVISO] DirectML ativado manualmente. Na RX580, use batch pequeno para reduzir risco de TDR do driver.")
     model = model.to(device)
+    print(f"[INFO] Weighted sampler: {'ativado' if USE_WEIGHTED_SAMPLER else 'desativado'}")
+    print(f"[INFO] Class weights na loss: {'ativado' if USE_CLASS_WEIGHTS else 'desativado'}")
+    if USE_WEIGHTED_SAMPLER and USE_CLASS_WEIGHTS:
+        print("[AVISO] Sampler ponderado e class weights juntos podem supercompensar classes menores.")
 
     dataloaders = {
         "train": DataLoader(
             train_dataset,
             batch_size=BATCH_SIZE,
             sampler=sampler,
+            shuffle=sampler is None,
             num_workers=NUM_WORKERS,
         ),
         "val": DataLoader(
@@ -421,7 +459,8 @@ def main() -> None:
         print("[ERRO] Nenhum parâmetro treinável encontrado.")
         return
 
-    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+    criterion_weight = class_weights.to(device) if USE_CLASS_WEIGHTS else None
+    criterion = nn.CrossEntropyLoss(weight=criterion_weight)
     if is_directml_device(device):
         optimizer = DirectMLAdamW(trainable_parameters, lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     else:
@@ -431,6 +470,8 @@ def main() -> None:
 
     print(f"\nIniciando treinamento por {NUM_EPOCHS} épocas...\n")
     best_loss = float("inf")
+    best_epoch = 0
+    best_state_dict = clone_state_dict_to_cpu(model)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     with open(CLASSES_SAVE_PATH, "w", encoding="utf-8") as file_handle:
@@ -489,16 +530,21 @@ def main() -> None:
 
             if phase == "val" and epoch_loss < best_loss:
                 best_loss = epoch_loss
+                best_epoch = epoch + 1
+                best_state_dict = clone_state_dict_to_cpu(model)
                 save_artifacts(model, processor, classes)
-                print(f"--> Novo melhor modelo salvo (Loss: {best_loss:.4f})")
+                print(f"--> Novo melhor modelo salvo (época {best_epoch}, Loss: {best_loss:.4f})")
 
         scheduler.step()
 
         time_elapsed = time.time() - start_time
         print(f"Tempo da época: {time_elapsed:.0f}s\n")
 
+    model.load_state_dict(best_state_dict)
     save_artifacts(model, processor, classes)
     print("Treinamento finalizado!")
+    if best_epoch:
+        print(f"Melhor checkpoint restaurado antes do salvamento final: época {best_epoch} (Loss: {best_loss:.4f})")
     print(f"Modelo salvo em: {MODEL_DIR}")
     print(f"Classes salvas em: {CLASSES_SAVE_PATH}")
 

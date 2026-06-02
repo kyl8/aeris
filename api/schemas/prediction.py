@@ -48,6 +48,22 @@ class PredictionResponse(BaseModel):
     source: str = Field(description="Origem da predição: transformers, pytorch, onnx ou heuristic.")
     created_at: datetime = Field(description="Momento em que a predição foi registrada.")
     inference_ms: float = Field(ge=0, description="Latência da inferência em milissegundos.")
+    top_predictions: list[dict[str, float | str]] = Field(
+        default_factory=list,
+        description="Ranking das classes mais prováveis com confiança normalizada.",
+    )
+    image_profile: dict[str, float] = Field(
+        default_factory=dict,
+        description="Perfil visual extraído da imagem para auditoria e explicabilidade.",
+    )
+    explanation: list[str] = Field(
+        default_factory=list,
+        description="Observações legíveis sobre os sinais usados pela inferência.",
+    )
+    risk_flags: list[str] = Field(
+        default_factory=list,
+        description="Alertas de confiabilidade, fallback ou qualidade do frame.",
+    )
 
 
 class PredictionHistoryItem(BaseModel):

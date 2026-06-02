@@ -5,23 +5,11 @@ from functools import lru_cache
 import io
 import logging
 from time import perf_counter
-from typing import Sequence
 
-from .config import DEFAULT_CLASS_LABELS, DEFAULT_MODEL_NAME, get_settings
-from .model import discover_model_artifact
+from .config import APP_VERSION, DEFAULT_CLASS_LABELS, DEFAULT_MODEL_NAME, get_settings
 from .preprocessing import build_heatmap_base64, extract_image_profile, validate_image_bytes
 
 logger = logging.getLogger(__name__)
-
-try:  
-    import numpy as np
-except Exception:  # pragma: no cover - fallback when numpy is unavailable
-    np = None
-
-try:  
-    import onnxruntime as ort
-except Exception:  
-    ort = None
 
 
 @dataclass(slots=True)
@@ -33,25 +21,22 @@ class PredictionOutcome:
     model_version: str
     source: str
     inference_ms: float
+    top_predictions: list[dict[str, float | str]]
+    image_profile: dict[str, float]
+    explanation: list[str]
+    risk_flags: list[str]
 
 
 class AerisPredictor:
     def __init__(self) -> None:
         self._settings = get_settings()
-        self._artifact = discover_model_artifact()
         self._labels = self._resolve_labels()
-        self._session = None
-        self._input_name = None
-        self._input_channels = 3
-        self._input_layout = "NCHW"
-        self._input_size = self._settings.image_size
 
         self._transformers_model = None
         self._transformers_processor = None
         self._transformers_model_name = None
-        self._pytorch_model = None
         try:
-            from .model import load_or_create_pytorch_model, load_weather_transformers_model
+            from .model import load_weather_transformers_model
 
             weather_bundle = load_weather_transformers_model(self._labels)
             if weather_bundle is not None:
@@ -59,33 +44,8 @@ class AerisPredictor:
                 self._transformers_processor = weather_bundle.processor
                 self._transformers_model_name = weather_bundle.name
                 logger.info("weather_transformers_model_loaded", extra={"model_name": self._transformers_model_name})
-            else:
-                self._pytorch_model = load_or_create_pytorch_model(len(self._labels))
-                if self._pytorch_model is not None:
-                    logger.info("pytorch_model_loaded")
         except Exception:
             logger.exception("weather_model_load_failed")
-
-        if self._artifact.path is not None and ort is not None and np is not None:
-            try:
-                session_options = ort.SessionOptions()
-                session_options.intra_op_num_threads = 1
-                session_options.inter_op_num_threads = 1
-                session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-                self._session = ort.InferenceSession(
-                    str(self._artifact.path),
-                    sess_options=session_options,
-                    providers=["CPUExecutionProvider"],
-                )
-                self._configure_session_metadata()
-                logger.info(
-                    "onnx_model_loaded",
-                    extra={"model_name": self._artifact.name, "model_path": str(self._artifact.path)},
-                )
-            except Exception:  
-                logger.exception("onnx_model_load_failed")
-                self._session = None
 
     def _resolve_labels(self) -> list[str]:
         import json
@@ -102,72 +62,38 @@ class AerisPredictor:
         labels = list(self._settings.class_labels)
         return labels if labels else list(DEFAULT_CLASS_LABELS)
 
-    def _configure_session_metadata(self) -> None:
-        if self._session is None:
-            return
-
-        input_metadata = self._session.get_inputs()[0]
-        shape = input_metadata.shape or []
-
-        if len(shape) >= 4:
-            if isinstance(shape[1], int) and shape[1] in {1, 3}:
-                self._input_channels = shape[1]
-                self._input_layout = "NCHW"
-                height = shape[2]
-                width = shape[3]
-            elif isinstance(shape[-1], int) and shape[-1] in {1, 3}:
-                self._input_channels = shape[-1]
-                self._input_layout = "NHWC"
-                height = shape[1]
-                width = shape[2]
-            else:
-                height = shape[2]
-                width = shape[3]
-
-            if isinstance(height, int) and height > 0:
-                self._input_size = height
-            if isinstance(width, int) and width > 0:
-                self._input_size = min(self._input_size, width)
-
-        self._input_name = input_metadata.name
-
     def predict(self, *, image_bytes: bytes) -> PredictionOutcome:
         validate_image_bytes(image_bytes)
         start_time = perf_counter()
+        profile = extract_image_profile(image_bytes)
 
         if self._transformers_model is not None and self._transformers_processor is not None:
-            prediction_class, confidence, source = self._predict_with_transformers(image_bytes)
-        elif self._pytorch_model is not None:
-            prediction_class, confidence, source = self._predict_with_pytorch(image_bytes)
-        elif self._session is not None:
-            prediction_class, confidence, source = self._predict_with_onnx(image_bytes)
+            prediction_class, confidence, source, top_predictions = self._predict_with_transformers(image_bytes)
         else:
-            prediction_class, confidence, source = self._predict_with_heuristics(image_bytes)
+            prediction_class, confidence, source, top_predictions = self._predict_with_heuristics(profile)
 
         heatmap = build_heatmap_base64(image_bytes)
         inference_ms = round((perf_counter() - start_time) * 1000, 2)
 
-        model_name = (
-            self._transformers_model_name
-            if self._transformers_model is not None
-            else (
-                "aeris-resnet18"
-                if self._pytorch_model is not None
-                else (self._artifact.name if self._artifact.path else DEFAULT_MODEL_NAME)
-            )
-        )
+        model_name = self._transformers_model_name if self._transformers_model is not None else DEFAULT_MODEL_NAME
+        explanation = self._build_explanation(profile, prediction_class, source)
+        risk_flags = self._build_risk_flags(profile, confidence, source, top_predictions)
 
         return PredictionOutcome(
             prediction_class=prediction_class,
             confidence=confidence,
             heatmap=heatmap,
             model_name=model_name,
-            model_version=self._artifact.version,
+            model_version=APP_VERSION,
             source=source,
             inference_ms=inference_ms,
+            top_predictions=top_predictions,
+            image_profile=profile,
+            explanation=explanation,
+            risk_flags=risk_flags,
         )
 
-    def _predict_with_transformers(self, image_bytes: bytes) -> tuple[str, float, str]:
+    def _predict_with_transformers(self, image_bytes: bytes) -> tuple[str, float, str, list[dict[str, float | str]]]:
         import torch
         from PIL import Image
 
@@ -183,46 +109,23 @@ class AerisPredictor:
             outputs = self._transformers_model(**inputs)
             probabilities = torch.softmax(outputs.logits[0], dim=0)
 
-        best_score, best_index = torch.max(probabilities, dim=0)
-        best_index = int(best_index.item())
-        best_score = float(best_score.item())
+        top_count = min(5, probabilities.shape[0])
+        top_scores, top_indexes = torch.topk(probabilities, k=top_count)
+        top_predictions = [
+            {
+                "label": self._label_for_index(int(index.item())),
+                "confidence": round(float(score.item()), 4),
+            }
+            for score, index in zip(top_scores, top_indexes)
+        ]
 
-        label = self._labels[best_index] if best_index < len(self._labels) else f"class_{best_index}"
-        return label, round(best_score, 4), "transformers"
+        best_prediction = top_predictions[0]
+        return str(best_prediction["label"]), float(best_prediction["confidence"]), "transformers", top_predictions
 
-    def _predict_with_pytorch(self, image_bytes: bytes) -> tuple[str, float, str]:
-        import torch
-        from .preprocessing import transform_image_for_pytorch
-        
-        tensor = transform_image_for_pytorch(image_bytes)
-        with torch.no_grad():
-            outputs = self._pytorch_model(tensor)
-            probabilities = torch.nn.functional.softmax(outputs[0], dim=0)
-            
-        best_score, best_index = torch.max(probabilities, dim=0)
-        best_index = int(best_index.item())
-        best_score = float(best_score.item())
-        
-        label = self._labels[best_index] if best_index < len(self._labels) else f"class_{best_index}"
-        return label, round(best_score, 4), "pytorch"
+    def _label_for_index(self, index: int) -> str:
+        return self._labels[index] if index < len(self._labels) else f"class_{index}"
 
-    def _predict_with_onnx(self, image_bytes: bytes) -> tuple[str, float, str]:
-        if self._session is None or self._input_name is None or np is None:
-            raise RuntimeError("A sessão ONNX não foi inicializada.")
-
-        tensor = self._build_tensor_from_bytes(image_bytes)
-        outputs = self._session.run(None, {self._input_name: tensor})
-        scores = self._extract_scores(outputs)
-        probabilities = self._scores_to_probabilities(scores)
-
-        best_index = int(np.argmax(probabilities))
-        best_score = float(probabilities[best_index])
-        label = self._labels[best_index] if best_index < len(self._labels) else f"class_{best_index}"
-
-        return label, round(best_score, 4), "onnx"
-
-    def _predict_with_heuristics(self, image_bytes: bytes) -> tuple[str, float, str]:
-        profile = extract_image_profile(image_bytes)
+    def _predict_with_heuristics(self, profile: dict[str, float]) -> tuple[str, float, str, list[dict[str, float | str]]]:
         scores = {
             "cloudy/overcast": (255.0 - profile["saturation"]) * 0.18
             + (220.0 - abs(profile["brightness"] - 155.0)) * 0.18,
@@ -241,59 +144,60 @@ class AerisPredictor:
 
         best_label = max(scores, key=scores.get)
         total_score = sum(max(value, 0.0) for value in scores.values()) or 1.0
-        confidence = scores[best_label] / total_score
-        confidence = round(min(max(confidence, 0.58), 0.97), 4)
+        top_predictions = [
+            {"label": label, "confidence": round(max(score, 0.0) / total_score, 4)}
+            for label, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        ]
+        confidence = float(top_predictions[0]["confidence"])
 
-        return best_label, confidence, "heuristic"
+        return best_label, confidence, "heuristic", top_predictions
 
-    def _extract_scores(self, outputs: Sequence[object]) -> np.ndarray:
-        if not outputs:
-            raise RuntimeError("O modelo ONNX não retornou saídas.")
+    def _build_explanation(self, profile: dict[str, float], prediction_class: str, source: str) -> list[str]:
+        explanation = [
+            f"Fonte da inferência: {source}.",
+            f"Classe dominante: {prediction_class}.",
+        ]
 
-        raw_scores = np.asarray(outputs[0], dtype=np.float32)
-        if raw_scores.ndim == 0:
-            raw_scores = raw_scores.reshape(1)
+        if profile["brightness"] >= 170:
+            explanation.append("Brilho alto favorece cenas claras, neve/geada ou céu aberto.")
+        elif profile["brightness"] <= 95:
+            explanation.append("Baixo brilho aumenta o peso de chuva, tempestade ou cena escura.")
 
-        if raw_scores.ndim > 1:
-            raw_scores = raw_scores[0]
+        if profile["saturation"] <= 80:
+            explanation.append("Baixa saturação favorece neblina, nublado e condições homogêneas.")
+        elif profile["saturation"] >= 160:
+            explanation.append("Saturação elevada indica cena visualmente mais definida.")
 
-        return raw_scores.astype(np.float32)
+        if profile["contrast"] >= 75 or profile["edge_strength"] >= 180:
+            explanation.append("Contraste e transições fortes indicam textura visual relevante no frame.")
 
-    def _scores_to_probabilities(self, scores: np.ndarray) -> np.ndarray:
-        if scores.size == 0:
-            return np.array([1.0], dtype=np.float32)
+        return explanation
 
-        if np.all(scores >= 0.0) and np.all(scores <= 1.0):
-            total = float(scores.sum())
-            if 0.99 <= total <= 1.01:
-                return scores
+    def _build_risk_flags(
+        self,
+        profile: dict[str, float],
+        confidence: float,
+        source: str,
+        top_predictions: list[dict[str, float | str]],
+    ) -> list[str]:
+        flags: list[str] = []
 
-        clipped_scores = scores - float(np.max(scores))
-        exponentials = np.exp(clipped_scores)
-        total = float(exponentials.sum()) or 1.0
-        return exponentials / total
+        if source == "heuristic":
+            flags.append("Modelo neural indisponível: usando fallback heurístico local.")
 
-    def _build_tensor_from_bytes(self, image_bytes: bytes) -> np.ndarray:
-        if np is None:
-            raise RuntimeError("NumPy é necessário para executar um modelo ONNX.")
+        if confidence < 0.45:
+            flags.append("Confiança baixa: classes próximas, trate como triagem visual.")
 
-        source = np.frombuffer(image_bytes, dtype=np.uint8)
-        if source.size == 0:
-            raise ValueError("A imagem enviada está vazia.")
+        if len(top_predictions) > 1:
+            margin = float(top_predictions[0]["confidence"]) - float(top_predictions[1]["confidence"])
+            if margin < 0.12:
+                flags.append("Margem pequena entre as duas classes mais prováveis.")
 
-        total_values = self._input_size * self._input_size * self._input_channels
-        tiled = np.resize(source, total_values).astype(np.float32) / 255.0
+        if profile["brightness"] < 35 or profile["brightness"] > 235:
+            flags.append("Frame com exposição extrema pode reduzir a confiabilidade.")
 
-        if self._input_channels == 1:
-            if self._input_layout == "NHWC":
-                return tiled.reshape(1, self._input_size, self._input_size, 1)
+        return flags
 
-            return tiled.reshape(1, 1, self._input_size, self._input_size)
-
-        if self._input_layout == "NHWC":
-            return tiled.reshape(1, self._input_size, self._input_size, self._input_channels)
-
-        return tiled.reshape(1, self._input_size, self._input_size, self._input_channels).transpose(0, 3, 1, 2)
 
 
 @lru_cache(maxsize=1)

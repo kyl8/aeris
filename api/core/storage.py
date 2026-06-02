@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from functools import lru_cache
+from contextlib import closing
 from pathlib import Path
 from threading import Lock
 import logging
@@ -93,7 +94,7 @@ class SQLitePredictionStore(PredictionStore):
         return connection
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS predictions (
@@ -112,10 +113,11 @@ class SQLitePredictionStore(PredictionStore):
             )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_predictions_created_at ON predictions(created_at)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_predictions_class ON predictions(climate_class)")
+            connection.commit()
 
     def save(self, record: PredictionRecord) -> PredictionRecord:
         created_at = record.created_at.astimezone(timezone.utc)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO predictions (
@@ -170,10 +172,6 @@ class SQLitePredictionStore(PredictionStore):
         conditions: list[str] = []
         parameters: list[object] = []
 
-        if date_filter is not None:
-            conditions.append("date(created_at) = ?")
-            parameters.append(date_filter.isoformat())
-
         if prediction_class is not None:
             conditions.append("climate_class = ?")
             parameters.append(prediction_class)
@@ -183,7 +181,7 @@ class SQLitePredictionStore(PredictionStore):
 
         query.append("ORDER BY created_at DESC, id DESC")
 
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute("\n".join(query), parameters).fetchall()
 
         return [
@@ -212,7 +210,12 @@ def _filter_records(
     filtered_records = records
 
     if date_filter is not None:
-        filtered_records = [record for record in filtered_records if record.created_at.date() == date_filter]
+        filtered_records = [
+            record
+            for record in filtered_records
+            if record.created_at.astimezone(timezone.utc).date() == date_filter
+            or record.created_at.astimezone().date() == date_filter
+        ]
 
     if prediction_class is not None:
         filtered_records = [record for record in filtered_records if record.climate_class == prediction_class]

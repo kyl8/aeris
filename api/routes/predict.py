@@ -23,6 +23,7 @@ router = APIRouter(tags=["prediction"])
 async def predict(
     image: UploadFile | None = File(default=None, description="Imagem enviada como multipart/form-data."),
     image_base64: str | None = Form(default=None, description="Imagem codificada em base64 ou data URL."),
+    persist: bool = Form(default=True, description="Quando false, executa inferência sem gravar no histórico."),
 ) -> PredictionResponse:
     if image is None and not image_base64:
         raise HTTPException(
@@ -51,28 +52,34 @@ async def predict(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     created_at = datetime.now(timezone.utc)
-    record = PredictionRecord(
-        id=None,
-        created_at=created_at,
-        climate_class=outcome.prediction_class,
+    if persist:
+        record = PredictionRecord(
+            id=None,
+            created_at=created_at,
+            climate_class=outcome.prediction_class,
+            confidence=outcome.confidence,
+            heatmap=outcome.heatmap,
+            model_name=outcome.model_name,
+            model_version=outcome.model_version,
+            source=outcome.source,
+            inference_ms=outcome.inference_ms,
+            image_name=image_name,
+        )
+
+        stored_record = get_history_store().save(record)
+        created_at = stored_record.created_at
+
+    return PredictionResponse(
+        prediction_class=outcome.prediction_class,
         confidence=outcome.confidence,
         heatmap=outcome.heatmap,
         model_name=outcome.model_name,
         model_version=outcome.model_version,
         source=outcome.source,
+        created_at=created_at,
         inference_ms=outcome.inference_ms,
-        image_name=image_name,
-    )
-
-    stored_record = get_history_store().save(record)
-
-    return PredictionResponse(
-        prediction_class=stored_record.climate_class,
-        confidence=stored_record.confidence,
-        heatmap=stored_record.heatmap,
-        model_name=stored_record.model_name,
-        model_version=stored_record.model_version,
-        source=stored_record.source,
-        created_at=stored_record.created_at,
-        inference_ms=stored_record.inference_ms,
+        top_predictions=outcome.top_predictions,
+        image_profile=outcome.image_profile,
+        explanation=outcome.explanation,
+        risk_flags=outcome.risk_flags,
     )

@@ -68,6 +68,9 @@ def test_predict_with_image_upload_persists_history(client: TestClient) -> None:
     assert payload["class"]
     assert 0 <= payload["confidence"] <= 1
     assert payload["heatmap"]
+    assert payload["top_predictions"]
+    assert payload["image_profile"]
+    assert payload["explanation"]
 
     history_response = client.get("/api/v1/history")
     assert history_response.status_code == 200
@@ -95,3 +98,22 @@ def test_predict_with_base64_form_field_supports_filters(client: TestClient) -> 
     filtered_payload = filtered_response.json()
     assert filtered_payload["total"] == 1
     assert filtered_payload["items"][0]["class"] == payload["class"]
+
+
+def test_predict_can_skip_history_for_realtime_frames(client: TestClient) -> None:
+    image_bytes = _build_image_bytes()
+
+    response = client.post(
+        "/api/v1/predict",
+        files={"image": ("realtime-frame.png", image_bytes, "image/png")},
+        data={"persist": "false"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["class"]
+    assert payload["top_predictions"]
+
+    history_response = client.get("/api/v1/history")
+    assert history_response.status_code == 200
+    assert history_response.json()["total"] == 0
